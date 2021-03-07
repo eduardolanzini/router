@@ -1,7 +1,8 @@
 {
   "name": "eduardolanzini/router",
-  "description": "Biblioteca de integração com o PagSeguro",
-  "license": "Apache-2.0",
+  "description": "Simple Router",
+  "license": "MIT",
+  "minimum-stability":"stable",
   "authors": [
     {
       "name": "Router"
