@@ -1,6 +1,6 @@
 <?php
 
-namespace EduardoLanzini\Router;
+namespace EduardoLanzini;
 
 Class Router
 {
