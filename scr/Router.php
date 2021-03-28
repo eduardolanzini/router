@@ -12,7 +12,7 @@ Class Router
 
 	protected $controllerPath;
 
-	protected $viewPath;
+	private $errors = [];
 
 	protected $matchTypes = array(
 		'i'  => '[0-9]++',
@@ -23,29 +23,14 @@ Class Router
 		''   => '[^/\.]++'
 	);
 
-	private $errors = [];
-
-	public function __construct($routes = array(), $basePath = '', $matchTypes = array())
+	public function __construct($basePath = '')
 	{
-		$this->addRoutes($routes);
 		$this->setBasePath($basePath);
-		$this->addMatchTypes($matchTypes);
 	}
 
 	public function getRoutes()
 	{
 		return $this->routes;
-	}
-
-	public function addRoutes($routes)
-	{
-		if(!is_array($routes) && !$routes instanceof Traversable) {
-			$this->error = 'Routes should be an array or an instance of Traversable';
-			return false;
-		}
-		foreach($routes as $route) {
-			call_user_func_array(array($this, 'map'), $route);
-		}
 	}
 
 	public function setBasePath($path)
@@ -58,23 +43,13 @@ Class Router
 		$this->controllerPath = $path;
 	}
 
-	public function setViewPath($path)
-	{
-		$this->viewPath = $path;
-	}
-
-	public function addMatchTypes($matchTypes)
-	{
-		$this->matchTypes = array_merge($this->matchTypes, $matchTypes);
-	}
-
 	public function map($method, $route, $target, $name = null)
 	{
 		$this->routes[] = array($method, $route, $target, $name);
 
 		if($name) {
 			if(isset($this->namedRoutes[$name])) {
-				$this->error = "Can not redeclare route '{$name}'";
+				$this->error = "Não é possível declarar a rota '{$name}'";
 				return false;
 			} else {
 				$this->namedRoutes[$name] = $route;
@@ -99,16 +74,16 @@ Class Router
 
 	public function group($prefix, $tree)
 	{
-	    foreach($tree as $node) {
+		foreach($tree as $node) {
 
-	    	$method = $node[0];
-	    	$route  = $prefix.$node[1];
-	    	$target = $node[2];
-	    	$name 	= isset($node[3]) ? $node[3] : null;
+			$method = $node[0];
+			$route  = $prefix.$node[1];
+			$target = $node[2];
+			$name 	= isset($node[3]) ? $node[3] : null;
 
-	    	$this->map($method, $route, $target, $name);
-	    }
-	    return;
+			$this->map($method, $route, $target, $name);
+		}
+		return;
 	}
 
 	public function generate($routeName, array $params = array())
@@ -148,22 +123,19 @@ Class Router
 		return $url;
 	}
 
-	public function match($requestUrl = null, $requestMethod = null)
+	public function match()
 	{
 		$params = array();
 		$match = false;
 
-		if($requestUrl === null) {
-			$requestUrl = isset($_GET['route']) ? $_GET['route'] : '/';
-		}
+		$requestUrl = isset($_GET['route']) ? $_GET['route'] : '/';
+
 
 		if (($strpos = strpos($requestUrl, '?')) !== false) {
 			$requestUrl = substr($requestUrl, 0, $strpos);
 		}
 
-		if($requestMethod === null) {
-			$requestMethod = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
-		}
+		$requestMethod = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
 		foreach($this->routes as $handler) {
 
@@ -190,6 +162,7 @@ Class Router
 				if (strncmp($requestUrl, $route, $position) !== 0) {
 					continue;
 				}
+
 				$regex = $this->compileRoute($route);
 				$match = preg_match($regex, $requestUrl, $params) === 1;
 			}
@@ -217,6 +190,7 @@ Class Router
 		if (preg_match_all('`(/|\.|)\[([^:\]]*+)(?::([^:\]]*+))?\](\?|)`', $route, $matches, PREG_SET_ORDER)) {
 
 			$matchTypes = $this->matchTypes;
+
 			foreach($matches as $match) {
 				list($block, $pre, $type, $param, $optional) = $match;
 
@@ -230,14 +204,14 @@ Class Router
 				$optional = $optional !== '' ? '?' : null;
 
 				$pattern = '(?:'
-						. ($pre !== '' ? $pre : null)
-						. '('
-						. ($param !== '' ? "?P<$param>" : null)
-						. $type
-						. ')'
-						. $optional
-						. ')'
-						. $optional;
+				. ($pre !== '' ? $pre : null)
+				. '('
+				. ($param !== '' ? "?P<$param>" : null)
+				. $type
+				. ')'
+				. $optional
+				. ')'
+				. $optional;
 
 				$route = str_replace($block, $pattern, $route);
 			}
@@ -246,14 +220,9 @@ Class Router
 		return "`^$route$`u";
 	}
 
-	public function error()
+	public function route()
 	{
-		return (!empty($this->errors)) ? $this->errors : false;
-	}
-
-	public function route($uri = null)
-	{
-		$match = $this->match($uri);
+		$match = $this->match();
 
 		if ($match) {
 
@@ -262,25 +231,32 @@ Class Router
 
 			if (is_callable($target)) {
 
-				call_user_func_array( $target, $params );
+				call_user_func_array($target,$params);
 			}
 
-			elseif (preg_match("/:/", $target))
-			{
+			elseif (preg_match("/:/", $target)){
 
 				$class = explode(':', $target);
 
-				$objName = 'Controllers\\'.$class[0];
+				$objName = 'App\\Controllers\\'.$class[0];
+
+				if(!class_exists($objName)){
+					exit("CLASSE '$class[0]' NÃO EXISTE");
+				}
 
 				$obj = new $objName();
 
 				$requestMethod = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
-				$params = $requestMethod=='POST' ? array_merge($params, $_POST) : array_merge($params, $_GET);
+				$params = $requestMethod == 'POST' ? array_merge($params, $_POST) : array_merge($params, $_GET);
 
 				unset($params['route']);
 
-				$obj->{$class[1]}((object)$params);
+				if (method_exists($obj,$class[1])) {
+					$obj->{$class[1]}((object)$params);
+				}else{
+					exit("MÉTODO '$class[1]' NÃO EXISTE NO CONTROLLER '$class[0]' ");
+				}
 			}
 			else
 			{
@@ -291,8 +267,25 @@ Class Router
 
 		}
 		else {
-			$this->error = 'Route not found';
+			$this->error[] = 'Rota não encontrada';
 			return false;
 		}
+	}
+
+	public function getErrors()
+	{
+		return (!empty($this->errors)) ? $this->errors : false;
+	}
+
+	public function displayErrors()
+	{
+		$errors = '';
+
+		foreach($this->getErrors() as $error)
+		{
+			$errors .= "<p>{$error}</p><br>";
+		}
+
+		return $errors;
 	}
 }
